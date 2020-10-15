@@ -10,17 +10,105 @@ const pool = new Pool({
   database: 'lightbnb'
 });
 
-/// Properties
+// const propertyHelper = (param_length, option, queryString) {
+//    const queryParams = []; 
+//    let newString = queryString;
+//     if(param_length) {
+//       queryParams.push(`${minimum_price_per_night}`);
+//       queryString += `AND cost_per_night >= $${queryParams.length}`;
+//     } else {
+//       queryParams.push(`${minimum_price_per_night}`);
+//       queryString += `WHERE cost_per_night >= $${queryParams.length}`;
+//     }
+//     return queryParams;
+// }
 
-const getAllProperties = function (options, limit = 10) {
-  return pool.query(`
-  SELECT *
+/// Properties
+const getAllProperties = function (options, limit = 70) {
+  console.log(options);
+  const queryParams = [];
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
   FROM properties
-  LIMIT $1
-  `, [limit])
+  JOIN property_reviews ON properties.id = property_id
+  `;
+
+  if(options.city) {
+    const city = options.city; 
+    queryParams.push(`%${city.charAt(0).toUpperCase() + city.slice(1)}%`);
+    queryString += `WHERE city LIKE $${queryParams.length}`;
+  }
+
+  if(options.owner_id) {
+    const owner = options.owner_id;
+    if(queryParams.length) {
+      queryParams.push(`${owner}`);
+      queryString += ` AND owner_id = $${queryParams.length}`;
+    } else {
+      queryParams.push(`${owner}`);
+      queryString += `WHERE owner_id = $${queryParams.length}`;
+    }
+  }
+
+  if(options.minimum_price_per_night) {
+    const minPrice = options.minimum_price_per_night;
+    if(queryParams.length) {
+      queryParams.push(`${minPrice}`);
+      queryString += ` AND cost_per_night >= $${queryParams.length}`;
+    } else {
+      queryParams.push(`${minPrice}`);
+      queryString += `WHERE cost_per_night >= $${queryParams.length}`;
+    }
+  }
+  if(options.maximum_price_per_night) {
+    const maxPrice = options.maximum_price_per_night;
+    if(queryParams.length) {
+      queryParams.push(`${maxPrice}`);
+      queryString += ` AND cost_per_night <= $${queryParams.length}`;
+    } else {
+      queryParams.push(`${maxPrice}`);
+      queryString += `WHERE cost_per_night <= $${queryParams.length}`;
+    }
+  }
+
+  if(options.minimum_rating) {
+    const minRating = options.minimum_rating;
+    queryParams.push(`${minRating}`);
+    let string = queryParams.length ? `AND` : `WHERE`; 
+    string += `property_reviews.rating >= $${queryParams.length}`; 
+  }
+   
+  queryParams.push(limit);
+  queryString += `
+  GROUP BY properties.id
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+
+  return pool.query(queryString, queryParams)
   .then(res => res.rows);
+
 };
+
 exports.getAllProperties = getAllProperties;
+
+// const getAllProperties = function (options, limit = 10) {
+//   return pool.query(`
+//   SELECT *
+//   FROM properties
+//   LIMIT $1
+//   `, [limit])
+//   .then(res => res.rows);
+// };
+// exports.getAllProperties = getAllProperties;
+
+
+
+
+
+
+
+
 
 // Get a single user from the database given their email.
 
@@ -29,7 +117,7 @@ const getUserWithEmail = function(email) {
     `SELECT *
      FROM USERS
      WHERE users.email = $1
-     `, [email])
+     `, [email.toLowerCase()])
      .then(res => {
        let user = null; 
        if(res.rows.length) {
